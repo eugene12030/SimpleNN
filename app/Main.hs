@@ -1,4 +1,7 @@
 module Main where
 
+import Options.Applicative (execParser)
+import CLI                 (parseCLI, runCLI)
+
 main :: IO ()
-main = putStrLn "Hello, Haskell!"
+main = execParser parseCLI >>= runCLI
