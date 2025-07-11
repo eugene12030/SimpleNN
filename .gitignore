@@ -1,0 +1,7 @@
+/dist-newstyle
+
+/.stack-work
+
+mnist_train.csv
+
+cabal
