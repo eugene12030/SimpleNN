@@ -8,19 +8,17 @@ module CLI (
 
 import            Options.Applicative
 import qualified  Data.List   as List
-import            System.IO   (hPutStrLn, stderr)
+import            Data.Char   (toLower)
+import            Numeric.LinearAlgebra (Vector)
 
 import SimpleNN.Core (
     Activation(..),
     Network,
     initializeNetwork,
-    forwardNetwork,
-    predictUnit,
+    predictUnit
     )
 
--- Mock data:
-
--- in SimpleNN.Data
+-- Mock data: signatures only
 loadData    :: FilePath -> IO [(Vector Double, Int)]
 loadInputs  :: FilePath -> IO [Vector Double]
 splitDataset
@@ -38,95 +36,84 @@ evalNetwork
   :: Network
   -> [(Vector Double, Int)]
   -> IO Double
-
 -- Mock data finish
 
---  Top‑level commands
+-- Top‑level commands
 data Command 
     = Init {
-        cInputSize    ::  Int,
+        cInputSize    :: Int,
+        cLayerSizes   :: [Int],
+        cActivations  :: [Activation]
+    }
+    | Train {
+        -- same init flags here:
+        cInputSize    :: Int,
         cLayerSizes   :: [Int],
         cActivations  :: [Activation],
-        cOutFile      :: FilePath
-    }
-    | Train {
-        cModelIn      :: FilePath,
+
         cEpochs       :: Int,
         cLearningRate :: Double,
         cTrainCSV     :: FilePath,
-        cValidRatio   :: Double,
-        cModelOut     :: FilePath
+        cValidRatio   :: Double
     }
-    | Train {
-        cModelIn      :: FilePath,
-        cEpochs       :: Int,
-        cLearningRate :: Double,
-        cTrainCSV     :: FilePath,
-        cValidRatio   :: Double,
-        cModelOut     :: FilePath
-    }
-    | Preduct {
-        cModelIn      :: FilePath,
+    | Predict {
+        cInputSize    :: Int,
+        cLayerSizes   :: [Int],
+        cActivations  :: [Activation],
+
         cInputCSV     :: FilePath
     }
     | Eval {
-        cModelIn      :: FilePath,
+        cInputSize    :: Int,
+        cLayerSizes   :: [Int],
+        cActivations  :: [Activation],
         cTestCSV      :: FilePath
     }
     deriving (Show)
 
 -- CLI parser entrypoint
-
 parseCLI :: ParserInfo Command
 parseCLI = info (hsubparser
-    ( command "init"    (initCmd    `withInfo` "Initialize a new network")
-   <> command "train"   (trainCmd   `withInfo` "Train an existing network")
-   <> command "predict" (predictCmd `withInfo` "Make predictions")
-   <> command "eval"    (evalCmd    `withInfo` "Evaluate on test data")
+    ( command "init"    (initCmd    `withInfo` "Build and show a new network")
+   <> command "train"   (trainCmd   `withInfo` "Init, load data & train")
+   <> command "predict" (predictCmd `withInfo` "Init, load inputs & predict")
+   <> command "eval"    (evalCmd    `withInfo` "Init, load test & evaluate")
     ))
   ( fullDesc
-    <> progDesc "SimpleNN: a tiny Haskell neural‑net"
-    <> header   "snn - neural network CLI" )
+    <> progDesc "SimpleNN: CLI without file serialization"
+    <> header   "snn" )
   where
     withInfo p desc = info (p <**> helper) (progDesc desc)
 
--- Parsing "init" command
-
-initCmd :: Parser Command
-initCmd = Init 
-    <?> option auto
+-- Common init‐flags parser
+initFlags :: Parser (Int, [Int], [Activation])
+initFlags =
+    (,,)
+    <$> option auto
         ( long "input-size"
        <> short 'i'
        <> metavar "N"
        <> help "Number of inputs" )
-    
     <*> some (option auto
         ( long "layer"
        <> short 'l'
        <> metavar "SIZE"
-       <> help "Hidden/output layer size (specify once per layer)" ))
-    
+       <> help "Hidden/output layer size (repeat per layer)" ))
     <*> some (option parseAct
         ( long "activation"
        <> short 'a'
        <> metavar "ReLU|Softmax|Identity"
        <> help "Activation for each layer (one per --layer)" ))
-    
-    <*> strOption
-        ( long "out"
-       <> short 'o'
-       <> metavar "FILE"
-       <> value "network.txt"
-       <> showDefault
-       <> help "Where to write initial network" )
 
--- | Parsing "train" Command
+-- Parsing "init" command
+initCmd :: Parser Command
+initCmd = fmap (\(i,ls,as) -> Init i ls as) initFlags
+
+-- Parsing "train" command
 trainCmd :: Parser Command
-trainCmd = Train
-    <$> strOption
-        ( long "model-in"
-       <> metavar "FILE"
-       <> help "Serialized network file" )
+trainCmd = 
+    (\(i,ls,as) e lr fp vr -> Train i ls as e lr fp vr)
+    <$> initFlags
     <*> option auto
         ( long "epochs"
        <> short 'e'
@@ -139,86 +126,80 @@ trainCmd = Train
     <*> strOption
         ( long "train"
        <> metavar "CSV"
-       <> help "Training data CSV" )
+       <> help "CSV of (features,label) pairs" )
     <*> option auto
         ( long "valid-ratio"
        <> metavar "R"
        <> value 0.2
        <> showDefault
        <> help "Validation split ratio (0–1)" )
-    <*> strOption
-        ( long "model-out"
-       <> metavar "FILE"
-       <> value "network-trained.txt"
-       <> showDefault
-       <> help "Where to write trained network" )
 
--- Parsing "predict" Command
+-- Parsing "predict" command
 predictCmd :: Parser Command
-predictCmd = Predict
-    <$> strOption
-        ( long "model"
-       <> metavar "FILE"
-       <> help "Serialized network file" )
+predictCmd =
+    (\(i,ls,as) fp -> Predict i ls as fp)
+    <$> initFlags
     <*> strOption
         ( long "input"
        <> metavar "CSV"
-       <> help "CSV of new inputs" )
+       <> help "CSV of feature-only rows" )
 
--- | Parsing "eval" Command
+-- Parsing "eval" command
 evalCmd :: Parser Command
-evalCmd = Eval
-  <$> strOption
-        ( long "model"
-       <> metavar "FILE"
-       <> help "Serialized network file" )
-  <*> strOption
+evalCmd =
+    (\(i,ls,as) fp -> Eval i ls as fp)
+    <$> initFlags
+    <*> strOption
         ( long "test"
        <> metavar "CSV"
-       <> help "CSV of labeled test data" )
+       <> help "CSV of (features,label) pairs" )
 
--- running each command
-
+-- Running each command
 runCLI :: Command -> IO ()
 runCLI Init{..} = do
-  -- initialize network in IO
-  net <- initializeNetwork cInputSize cLayerSizes cActivations
-  writeFile cOutFile (show net)
-  putStrLn $ "Network initialized → " ++ cOutFile
-
+    -- initialize network in IO
+    net <- initializeNetwork cInputSize cLayerSizes cActivations
+    putStrLn "=== Initialized network ==="
+    print net
 
 runCLI Train{..} = do
-  -- load existing network
-  txt <- readFile cModelIn
-  let net = read txt :: Network
-  -- load & split data
-  datapoints <- loadCSV cTrainCSV
-  let (trD, vaD) = splitDataset cValidRatio datapoints
-  -- train
-  trained <- trainNetwork net cEpochs cLearningRate trD vaD
-  writeFile cModelOut (show trained)
-  putStrLn $ "Training complete → " ++ cModelOut
+    -- initialize network
+    net0 <- initializeNetwork cInputSize cLayerSizes cActivations
+
+    -- load & split data
+    samples <- loadData cTrainCSV
+    let (trD, vaD) = splitDataset cValidRatio samples
+
+    -- train
+    trained <- trainNetwork net0 cEpochs cLearningRate trD vaD
+    putStrLn "=== Training complete ==="
+    print trained
 
 runCLI Predict{..} = do
-  txt <- readFile cModelIn
-  let net = read txt :: Network
-  datapoints <- loadCSV cInputCSV
-  let inputs = map features datapoints
-      preds  = map (predictUnit net) inputs
-  putStrLn "Predictions:"
-  mapM_ print preds
+    -- initialize network
+    net <- initializeNetwork cInputSize cLayerSizes cActivations
+
+    -- load inputs
+    inputs <- loadInputs cInputCSV
+    let preds = map (predictUnit net) inputs
+
+    putStrLn "=== Predictions ==="
+    mapM_ print preds
 
 runCLI Eval{..} = do
-  txt <- readFile cModelIn
-  let net = read txt :: Network
-  testD <- loadCSV cTestCSV
-  acc   <- evalNetwork net testD
-  putStrLn $ "Accuracy: " ++ show (acc * 100) ++ "%"
+    -- initialize network
+    net <- initializeNetwork cInputSize cLayerSizes cActivations
 
--- | Convert string to Activation
+    -- load & evaluate
+    samples <- loadData cTestCSV
+    acc     <- evalNetwork net samples
+
+    putStrLn $ "=== Accuracy: " ++ show (acc * 100) ++ "% ==="
+
+-- Convert string to Activation
 parseAct :: ReadM Activation
 parseAct = eitherReader $ \s -> case List.map toLower s of
-  "relu"     -> Right ReLU
-  "softmax"  -> Right Softmax
-  "identity" -> Right Identity
-  _          -> Left $ "Unknown activation: " ++ s
+    "relu"     -> Right ReLU
+    "softmax"  -> Right Softmax
+    "identity" -> Right Identity
+    _          -> Left $ "Unknown activation: " ++ s
