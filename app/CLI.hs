@@ -9,9 +9,9 @@ module CLI (
 import            Options.Applicative
 import qualified  Data.List   as List
 import            Data.Char   (toLower)
-import            Numeric.LinearAlgebra (Vector)
+import Core (Vector)
 
-import SimpleNN.Core (
+import Core (
     Activation(..),
     Network,
     initializeNetwork,

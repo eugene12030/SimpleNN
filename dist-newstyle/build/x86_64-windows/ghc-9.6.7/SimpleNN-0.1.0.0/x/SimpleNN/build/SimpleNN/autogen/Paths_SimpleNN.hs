@@ -46,12 +46,12 @@ getBinDir, getLibDir, getDynLibDir, getDataDir, getLibexecDir, getSysconfDir :: 
 
 
 bindir, libdir, dynlibdir, datadir, libexecdir, sysconfdir :: FilePath
-bindir     = "C:\\cabal\\bin"
-libdir     = "C:\\cabal\\x86_64-windows-ghc-9.6.7\\SimpleNN-0.1.0.0-inplace-SimpleNN"
-dynlibdir  = "C:\\cabal\\x86_64-windows-ghc-9.6.7"
-datadir    = "C:\\cabal\\x86_64-windows-ghc-9.6.7\\SimpleNN-0.1.0.0"
-libexecdir = "C:\\cabal\\SimpleNN-0.1.0.0-inplace-SimpleNN\\x86_64-windows-ghc-9.6.7\\SimpleNN-0.1.0.0"
-sysconfdir = "C:\\cabal\\etc"
+bindir     = "C:\\Program Files\\bin"
+libdir     = "C:\\Program Files\\x86_64-windows-ghc-9.6.7\\SimpleNN-0.1.0.0-inplace-SimpleNN"
+dynlibdir  = "C:\\Program Files\\x86_64-windows-ghc-9.6.7"
+datadir    = "C:\\Program Files\\x86_64-windows-ghc-9.6.7\\SimpleNN-0.1.0.0"
+libexecdir = "C:\\Program Files\\SimpleNN-0.1.0.0-inplace-SimpleNN\\x86_64-windows-ghc-9.6.7\\SimpleNN-0.1.0.0"
+sysconfdir = "C:\\Program Files\\etc"
 
 getBinDir     = catchIO (getEnv "SimpleNN_bindir")     (\_ -> return bindir)
 getLibDir     = catchIO (getEnv "SimpleNN_libdir")     (\_ -> return libdir)
