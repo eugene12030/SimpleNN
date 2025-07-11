@@ -69,7 +69,9 @@ executable SimpleNN
 
     -- Other library packages from which modules are imported.
     build-depends:    base >=4.7 && <5,
-                      MonadRandom
+                      MonadRandom,
+                      optparse-applicative >=0.16,
+                      hmatrix
 
     -- Directories containing source files.
     hs-source-dirs:   app
