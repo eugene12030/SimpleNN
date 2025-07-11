@@ -62,7 +62,9 @@ executable SimpleNN
     main-is:          Main.hs
 
     -- Modules included in this executable, other than Main.
-    other-modules: Core
+    other-modules:    CLI,
+                      DataProcessing,
+                      Core
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
@@ -71,11 +73,14 @@ executable SimpleNN
     build-depends:    base >=4.7 && <5,
                       MonadRandom,
                       optparse-applicative >=0.16,
-                      random
+                      random,
+                      vector,
+                      bytestring,
+                      cassava,
+                      random-shuffle
 
     -- Directories containing source files.
-    hs-source-dirs:   app,
-                      src
+    hs-source-dirs:   src
 
     -- Base language which the package is written in.
     default-language: Haskell2010
