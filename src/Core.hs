@@ -64,13 +64,14 @@ reshape n vec
   | n <= 0 = error "Invalid number of rows"
   | otherwise = chunksOf (length vec `div` n) vec
 
--- Find index of maximum element
+-- Find index of maximum element in a vector
 maxIndex :: Vector -> Int
-maxIndex = fst . foldl1' maxBy . zip [0..]
+maxIndex xs = go xs 0 (0, head xs)
   where
-    maxBy (i1, v1) (i2, v2)
-      | v1 >= v2  = (i1, v1)
-      | otherwise = (i2, v2)
+    go []     _          (maxIdx, _) = maxIdx
+    go (y:ys) idx (currIdx, currVal)
+      | y > currVal = go ys (idx + 1) (idx, y)
+      | otherwise   = go ys (idx + 1) (currIdx, currVal)
 
 -- Generate random doubles in [-0.5, 0.5]
 randomDoubles :: Int -> IO Vector
@@ -184,13 +185,14 @@ forwardLayer Layer{..} input =
 
 -- Forward pass through entire network with caching
 forwardPass :: Network -> Vector -> (Vector, [LayerCache])
-forwardPass Network{..} input = 
-  let (output, caches) = foldl' 
-        (\(a_prev, caches) layer -> 
-          let (a, cache) = forwardLayer layer a_prev
-          in (a, cache : caches))
-        (input, []) layers
-  in (output, reverse caches)
+forwardPass Network{..} input = forwardAllLayers input layers
+  where
+    forwardAllLayers :: Vector -> [Layer] -> (Vector, [LayerCache])
+    forwardAllLayers aPrev [] = (aPrev, [])
+    forwardAllLayers aPrev (layer:rest) =
+      let (a, cache) = forwardLayer layer aPrev      -- Apply current layer
+          (finalOut, caches) = forwardAllLayers a rest  -- Process remaining layers
+      in (finalOut, cache : caches)  -- Add current cache to the list
 
 
 -- Backward pass to compute gradients
@@ -247,20 +249,39 @@ addGrads :: (Matrix, Vector) -> (Matrix, Vector) -> (Matrix, Vector)
 addGrads (dW1, db1) (dW2, db2) = 
   (matrixAdd dW1 dW2, vecAdd db1 db2)
 
+-- Sum (Matrix, Vector) gradients elementwise in a list
+sumLayerGrads :: [(Matrix, Vector)] -> (Matrix, Vector)
+sumLayerGrads [g] = g
+sumLayerGrads (g:gs) = addGrads g (sumLayerGrads gs)
+
 
 -- Update network parameters
 updateNetwork :: Network -> Double -> [[(Matrix, Vector)]] -> Network
-updateNetwork net lr gradsList = 
+updateNetwork net lr gradsList =
   let numSamples = genericLength gradsList
+
+      -- Transpose
+      layersGrads :: [[(Matrix, Vector)]]
       layersGrads = transpose gradsList
-      sumGrads = map (foldl1' addGrads) layersGrads
+
+      -- For each layer, sum gradients across all samples
+      sumGrads :: [(Matrix, Vector)]
+      sumGrads = map sumLayerGrads layersGrads
+
+      -- Average each layer's gradients
+      avgGrads :: [(Matrix, Vector)]
       avgGrads = map (scaleGrad (1 / numSamples)) sumGrads
-      newLayers = zipWith 
-        (\layer (dW, db) -> 
-          layer { weightsMatrix = matrixAdd (weightsMatrix layer) (scaleMatrix (-lr) dW)
-                 , biasesVector = vecAdd (biasesVector layer) (scale (-lr) db)
-                 })
-        (layers net) avgGrads
+
+      -- Create new layer list with updated weights and biases
+      newLayers :: [Layer]
+      newLayers = zipWith updateLayer (layers net) avgGrads
+
+      -- Single layer's update step
+      updateLayer :: Layer -> (Matrix, Vector) -> Layer
+      updateLayer layer (dW, db) = layer
+        { weightsMatrix = matrixAdd (weightsMatrix layer) (scaleMatrix (-lr) dW)
+        , biasesVector = vecAdd (biasesVector layer) (scale (-lr) db)
+        }
   in net { layers = newLayers }
 
 
@@ -291,16 +312,28 @@ train :: Network
       -> [Vector] -- Targets
       -> Int      -- Epochs
       -> Network
-train net lr batchSize inputs targets epochs = 
-  let numExamples = length inputs
-      dataset = zip inputs targets
-      epochLoop net' epoch = 
-        let batches = createBatches batchSize dataset
-            batchLoop net'' batch = 
-              let (inputs_b, targets_b) = unzip batch
-              in trainOnMiniBatch net'' lr inputs_b targets_b
-        in foldl' batchLoop net' batches
-  in foldl' epochLoop net [1..epochs]
+train net lr batchSize inputs targets epochs =
+  let
+    dataset = zip inputs targets
+    numExamples = length inputs
+
+    -- Process all batches in one epoch
+    trainBatches :: Network -> [[(Vector, Vector)]] -> Network
+    trainBatches net' [] = net'
+    trainBatches net' (batch:restBatches) =
+      let (inputs_b, targets_b) = unzip batch
+          net'' = trainOnMiniBatch net' lr inputs_b targets_b
+      in trainBatches net'' restBatches
+
+    -- Main epoch loop
+    trainEpochs :: Network -> Int -> Network
+    trainEpochs net' 0 = net'
+    trainEpochs net' n =
+      let batches = createBatches batchSize dataset
+          net'' = trainBatches net' batches
+      in trainEpochs net'' (n - 1)
+
+  in trainEpochs net epochs
 
 -- Cross-entropy loss function
 crossEntropyLoss :: Vector -> Vector -> Double
