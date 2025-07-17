@@ -353,3 +353,8 @@ predictUnit network input = maxIndex (forwardNetwork network input)
 createXORDataset :: [Vector]
 createXORDataset = 
   [ [0,0], [0,1], [1,0], [1,1] ]
+
+-- Label to One-Hot vector
+labelToOneHot :: Int -> Int -> Vector
+labelToOneHot numClasses lbl =
+  [if i == lbl then 1.0 else 0.0 | i <- [0..numClasses-1]]

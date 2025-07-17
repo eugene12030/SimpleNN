@@ -96,7 +96,7 @@ trainCmd =
   <*> option auto
         ( long "valid-ratio"
         <> metavar "R"
-        <> value 0.2
+        <> value 0.8
         <> showDefault
         <> help "Validation fraction (0–1)" )
   <*> option auto
