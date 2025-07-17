@@ -5,8 +5,33 @@ module DataProcessing where
 import qualified Data.Vector                as V
 import qualified Data.ByteString.Lazy       as BL
 import qualified Data.ByteString.Lazy.Char8 as BL8
+import qualified Data.ByteString.Char8      as BS
 import qualified Data.Csv                   as Csv
 import           System.Random.Shuffle      (shuffleM)
+
+-- | Data type to represent a single prediction record for CSV output
+data PredictionRecord = PredictionRecord
+  { recordNumber   :: Int
+  , predictedValue :: Int
+  }
+
+-- | How to encode a PredictionRecord into a CSV row
+instance Csv.ToRecord PredictionRecord where
+  toRecord (PredictionRecord num predVal) = Csv.record
+    [ BS.pack (show num)
+    , BS.pack (show predVal)
+    ]
+
+-- | How to encode a PredictionRecord as a CSV header
+instance Csv.ToNamedRecord PredictionRecord where
+  toNamedRecord (PredictionRecord num predVal) = Csv.namedRecord
+    [ "Number"   Csv..= num
+    , "Prediction" Csv..= predVal
+    ]
+
+-- | Specify the order of fields for CSV encoding
+instance Csv.DefaultOrdered PredictionRecord where
+  headerOrder _ = Csv.header ["Number", "Prediction"]
 
 loadCSV :: FilePath -> IO [V.Vector Double]
 loadCSV filepath = do
@@ -59,3 +84,9 @@ splitDatasetRandom ratio dataset = do
     let trainSize = round (ratio * fromIntegral (length shuffled))
     return $ splitAt trainSize shuffled
 
+writePredictionsCSV :: FilePath -> [Int] -> IO ()
+writePredictionsCSV filepath predictions = do
+  let records = zipWith PredictionRecord [0..] predictions
+      csvData = Csv.encodeDefaultOrderedByName records
+  BL.writeFile filepath csvData
+  putStrLn $ "Predictions written to " ++ filepath
