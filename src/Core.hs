@@ -197,40 +197,48 @@ forwardPass Network{..} input = forwardAllLayers input layers
 
 -- Backward pass to compute gradients
 backwardPass :: Network -> [LayerCache] -> Vector -> [(Matrix, Vector)]
-backwardPass net caches target = 
-  let layersList = layers net
-      numLayers = length layersList
-      (lastZ, _) = last caches
-      output = applyActivation (layerActivation (last layersList)) lastZ
-      
-      -- Special handling for output layer
-      outputDelta = vecAdd output (scale (-1) target)
-      
-      -- Compute deltas for each layer
-      deltas = 
-        if numLayers == 0 
-          then []
-          else 
-            let initDeltas = [outputDelta]
-                layerIndices = [numLayers-2, numLayers-3 .. 0]
-                computeDelta deltasAcc layerIdx = 
-                  let layer = layersList !! layerIdx
-                      (z, a_prev) = caches !! layerIdx
-                      delta_next = head deltasAcc
-                      weightsT = transposeMat (weightsMatrix (layersList !! (layerIdx + 1)))
-                      backprop = matVecMult weightsT delta_next
-                      deriv = activationDerivative (layerActivation layer) z
-                      delta = hadamard backprop deriv
-                  in delta : deltasAcc
-            in foldl' computeDelta initDeltas layerIndices
-      
-      -- Compute gradients for each layer
-      grads = [ ( outer delta a_prev, delta )  -- (dW, db)
-              | i <- [0 .. numLayers - 1]
-              , let (z, a_prev) = caches !! i
-                    delta = deltas !! i
-              ]
+backwardPass net caches target =
+  let
+    layersList = layers net
+    numLayers = length layersList
+    (lastZ, _) = last caches
+    output = applyActivation (layerActivation (last layersList)) lastZ
+
+    -- output layer delta 
+    outputDelta = vecAdd output (scale (-1) target)
+
+    -- deltas for all layers (from output back to input)
+    computeAllDeltas :: [Vector]
+    computeAllDeltas
+      | numLayers == 0 = []
+      | otherwise      = reverse (go (numLayers - 2) [outputDelta])
+      where
+        go (-1) deltas = deltas
+        go layerIdx deltasAcc =
+          let
+            nextLayer = layersList !! (layerIdx + 1)
+            currLayer = layersList !! layerIdx
+
+            (_z, a_prev) = caches !! layerIdx
+            delta_next   = head deltasAcc
+
+            weightsT = transposeMat (weightsMatrix nextLayer)
+            backprop = matVecMult weightsT delta_next
+            deriv    = activationDerivative (layerActivation currLayer) (fst (caches !! layerIdx))
+            delta    = hadamard backprop deriv
+          in go (layerIdx - 1) (delta : deltasAcc)
+
+    deltas = computeAllDeltas
+
+    -- Compute gradients for each layer: (dW, db)
+    grads =
+      [ (outer delta a_prev, delta)
+      | i <- [0 .. numLayers - 1]
+      , let (z, a_prev) = caches !! i
+            delta       = deltas !! i
+      ]
   in grads
+
 
 -- Matrix addition
 matrixAdd :: Matrix -> Matrix -> Matrix
