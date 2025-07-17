@@ -20,9 +20,12 @@ import           Core                        ( Vector
                                              , Network
                                              , initializeNetwork
                                              , predictUnit
+                                             , labelToOneHot
+                                             , train
                                              )
 import           DataProcessing              ( loadCSV
                                              , splitDataset
+                                             , writePredictionsCSV
                                              )
 
 -- | Top-level commands
@@ -40,7 +43,7 @@ data Command
       , cLearningRate:: Double
       }
   | Predict
-      { 
+      {
         cInputCSV    :: FilePath
       }
   | Eval
@@ -162,7 +165,7 @@ runCLI Shell = do
   where
     shellWorker :: IORef (Maybe Network) -> IO ()
     shellWorker networkRef = do
-      putStr "> "
+      putStr ">> "
       hFlush stdout
       line <- getLine
       let trimmedLine = List.dropWhileEnd (`elem` " \t\n\r") $ List.dropWhile (`elem` " \t") line
@@ -204,7 +207,17 @@ runCLI Shell = do
                       putStrLn $ "Loaded " ++ show (length raw) ++ " samples"
                       putStrLn $ " -> training:   " ++ show (length trainV)
                       putStrLn $ " -> validation: " ++ show (length validV)
-                      putStrLn "=== (Stub) Training complete ==="
+
+                      let trainInputs = map (V.toList . V.tail) trainV
+                          trainLabels = map (round . V.head) trainV
+                          numClasses = 10
+                          trainTargets = map (labelToOneHot numClasses) trainLabels
+                          batchSize = 32
+
+                      let trainedNet = train net cLearningRate batchSize trainInputs trainTargets cEpochs
+                      writeIORef networkRef (Just trainedNet)
+                      putStrLn "=== Training complete ==="
+
                     Nothing -> putStrLn "Error: No network initialized. Use 'init' command first."
                   shellWorker networkRef
 
@@ -215,7 +228,12 @@ runCLI Shell = do
                       let feats = map (V.toList . V.tail) raw
                           preds = map (predictUnit net) feats
                       putStrLn "=== Predictions ==="
+
                       mapM_ print preds
+                      -- case cOutputCSV of
+                        -- Just outputPath -> writePredictionsCSV outputPath preds
+                        -- Nothing         -> return () -- Do nothing if no output path specified
+                      writePredictionsCSV "prediction_result.csv" preds
                     Nothing -> putStrLn "Error: No network initialized. Use 'init' command first."
                   shellWorker networkRef
 
