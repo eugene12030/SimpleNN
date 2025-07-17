@@ -23,6 +23,7 @@ import           Core                        ( Vector
                                              )
 import           DataProcessing              ( loadCSV
                                              , splitDataset
+                                             , writePredictionsCSV
                                              )
 
 -- | Top-level commands
@@ -40,7 +41,7 @@ data Command
       , cLearningRate:: Double
       }
   | Predict
-      { 
+      {
         cInputCSV    :: FilePath
       }
   | Eval
@@ -215,7 +216,13 @@ runCLI Shell = do
                       let feats = map (V.toList . V.tail) raw
                           preds = map (predictUnit net) feats
                       putStrLn "=== Predictions ==="
-                      mapM_ print preds
+                      -- Print to console
+                      -- mapM_ print preds
+                      -- Write to file if output path is provided
+                      -- case cOutputCSV of
+                        -- Just outputPath -> writePredictionsCSV outputPath preds
+                        -- Nothing         -> return () -- Do nothing if no output path specified
+                      writePredictionsCSV "prediction_result.csv" preds
                     Nothing -> putStrLn "Error: No network initialized. Use 'init' command first."
                   shellWorker networkRef
 

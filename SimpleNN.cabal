@@ -77,7 +77,8 @@ executable SimpleNN
                       vector,
                       bytestring,
                       cassava,
-                      random-shuffle
+                      random-shuffle,
+                      text
 
     -- Directories containing source files.
     hs-source-dirs:   src
