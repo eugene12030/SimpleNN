@@ -22,7 +22,7 @@ type Matrix = [Vector]
 matrix :: Int -> Int -> [Double] -> Matrix
 matrix rows cols vals
   | rows * cols /= length vals = error "Incorrect number of elements for matrix"
-  | otherwise = take rows $ chunksOf cols vals
+  | otherwise = take rows (chunksOf cols vals)
 
 -- Split list into chunks of given size
 chunksOf :: Int -> [a] -> [[a]]
@@ -72,6 +72,10 @@ maxIndex = fst . foldl1' maxBy . zip [0..]
       | v1 >= v2  = (i1, v1)
       | otherwise = (i2, v2)
 
+-- Generate random doubles in [-0.5, 0.5]
+randomDoubles :: Int -> IO Vector
+randomDoubles n = mapM (\_ -> randomRIO (-0.5, 0.5)) [1..n]
+
 -- Generate random vector
 randomVector :: RandomGen g => g -> Int -> IO (Vector, g)
 randomVector gen len = do
@@ -112,35 +116,18 @@ hadamard = zipWith (*)
 -- Activation functions
 data Activation = ReLU | Softmax | Identity deriving (Show, Eq)
 
--- Neuron representation
-data Neuron = Neuron
-  { layerIndex :: !Int
-  , neuronIndex :: !Int
-  , biasValue :: !Double
-  , activationFunc :: !Activation
-  } deriving (Show)
-
--- Connection representation
-data Connection = Connection
-  { fromLayer :: !Int
-  , fromNeuron :: !Int
-  , toLayer :: !Int
-  , toNeuron :: !Int
-  , weightValue :: !Double
-  } deriving (Show)
-
 -- Neural network layer
 data Layer = Layer
-  { weightsMatrix :: !Matrix
-  , biasesVector :: !Vector
-  , layerActivation :: !Activation
+  { weightsMatrix :: Matrix
+  , biasesVector :: Vector
+  , layerActivation :: Activation
   } deriving (Show)
 
 -- Full neural network
 data Network = Network
-  { inputSize :: !Int
-  , layerSizes :: ![Int]
-  , layers :: ![Layer]
+  { inputSize :: Int
+  , layerSizes :: [Int]
+  , layers :: [Layer]
   } deriving (Show)
 
 -- Type for caching intermediate values during forward pass
@@ -148,23 +135,21 @@ type LayerCache = (Vector, Vector)  -- (z = W·a_prev + b, a_prev = previous lay
 
 -- Initialize a single layer
 initializeLayer :: Int -> Int -> Activation -> IO Layer
-initializeLayer inputSize outputSize activation = do
-  weights <- initializeWeights activation inputSize outputSize
-  let biases = konst 0 outputSize
-  return $ Layer weights biases activation
+initializeLayer inS outS activation = do
+  weights <- initializeWeights activation inS outS
+  let biases = konst 0 outS
+  return (Layer weights biases activation)
 
 -- Initialize weights for a layer
 initializeWeights :: Activation -> Int -> Int -> IO Matrix
 initializeWeights activation inS outS = do
   let n = fromIntegral inS
       stdDev = case activation of
-                 ReLU -> sqrt (2.0 / n)  -- He initialization
-                 _    -> sqrt (1.0 / n)  -- Xavier initialization
-  
-  gen <- newStdGen
-  (weights, _) <- randomVector gen (outS * inS)
-  let scaledWeights = scale stdDev weights
-  return $ reshape outS scaledWeights
+                 ReLU -> sqrt (2.0 / n)
+                 _    -> sqrt (1.0 / n)
+  ws <- randomDoubles (outS * inS)
+  let scaled = scale stdDev ws
+  return (reshape inS scaled)
 
 
 -- Initialize full network
@@ -179,7 +164,7 @@ initializeNetwork inS sizes activations
           
       layerList <- mapM (\((prev, next), act) -> initializeLayer prev next act) configs
       
-      return $ Network inS sizes layerList
+      return (Network inS sizes layerList)
 
 -- Apply activation function to vector
 applyActivation :: Activation -> Vector -> Vector
@@ -217,15 +202,7 @@ backwardPass net caches target =
       output = applyActivation (layerActivation (last layersList)) lastZ
       
       -- Special handling for output layer
-      outputDelta = case layerActivation (last layersList) of
-        Softmax -> 
-          -- Combined derivative for softmax + cross-entropy
-          vecAdd output (scale (-1) target)
-        Identity -> 
-          -- For regression tasks (mean squared error)
-          vecAdd output (scale (-1) target)
-        _ -> 
-          error "Unsupported output activation function"
+      outputDelta = vecAdd output (scale (-1) target)
       
       -- Compute deltas for each layer
       deltas = 
@@ -294,7 +271,7 @@ trainOnMiniBatch :: Network
                  -> [Vector] -- Targets
                  -> Network
 trainOnMiniBatch net lr inputs targets = 
-  let gradsList = [ backwardPass net (snd $ forwardPass net input) target 
+  let gradsList = [ backwardPass net (snd  (forwardPass net input)) target 
                  | (input, target) <- zip inputs targets 
                  ]
   in updateNetwork net lr gradsList
@@ -331,84 +308,15 @@ crossEntropyLoss output target =
   let losses = zipWith (\o t -> -t * log o) output target
   in sum losses
 
-
--- Extract neurons from network
-extractNeurons :: Network -> [Neuron]
-extractNeurons Network{..} = 
-  let inputNeurons = [Neuron 0 i 0.0 Identity | i <- [0..inputSize-1]]
-      
-      hiddenNeurons = concat $ 
-        zipWith3 (\layerIdx size layer -> 
-          [Neuron (layerIdx+1) j (biasesVector layer !! j) (layerActivation layer)
-          | j <- [0..size-1]])
-        [1..] layerSizes layers
-  in inputNeurons ++ hiddenNeurons
-{-
--- Extract connections from network
-extractConnections :: Network -> [Connection]
-extractConnections Network{..} = 
-  let inputConnections = 
-        if not (null layers)
-          then [Connection 0 i 1 j (atIndex (weightsMatrix (head layers)) (j, i))
-               | i <- [0..inputSize-1]
-               , j <- [0..head layerSizes - 1]
-          else []
-      
-      hiddenConnections = concat $ 
-        zipWith3 (\layerIdx prevSize layer -> 
-          [Connection layerIdx i (layerIdx+1) j (atIndex (weightsMatrix layer) (j, i))
-          | i <- [0..prevSize-1]
-          , j <- [0..layerSizes !! layerIdx - 1]])
-        [1..] (init layerSizes) (tail layers)
-  in inputConnections ++ hiddenConnections
--}
--- Convert label to one-hot vector
-labelToOneHot :: Int -> Int -> Vector
-labelToOneHot numClasses lbl = 
-  [if i == lbl then 1.0 else 0.0 | i <- [0..numClasses-1]]
-
 -- | Forward pass without caching (used for predictions)
 forwardNetwork :: Network -> Vector -> Vector
 forwardNetwork net input = fst (forwardPass net input)
 
 -- | Predict class index from input
 predictUnit :: Network -> Vector -> Int
-predictUnit network input = 
-  maxIndex $ forwardNetwork network input
+predictUnit network input = maxIndex (forwardNetwork network input)
 
-
--- Create XOR dataset
+-- Create XOR dataset (used for testing of functionality)
 createXORDataset :: [Vector]
 createXORDataset = 
   [ [0,0], [0,1], [1,0], [1,1] ]
-{-
--- Demonstration function
-main :: IO ()
-main = do
-  putStrLn "Initializing neural network for XOR problem..."
-  let config = (2, [2, 1], [ReLU, Identity])  -- 2 inputs, hidden layer of 2, output of 1
-  
-  network@(Network _ _ layers) <- initializeNetwork (fst3 config) (snd3 config) (trd3 config)
-  putStrLn $ "Network initialized with " ++ show (length layers) ++ " layers"
-  
-  let neurons = extractNeurons network
-      connections = extractConnections network
-  
-  putStrLn "\nNeurons:"
-  mapM_ print neurons
-  
-  putStrLn "\nConnections:"
-  mapM_ print connections
-  
-  putStrLn "\nTesting XOR:"
-  mapM_ (\input -> do
-      let output = forwardNetwork network input
-      putStrLn $ "Input: " ++ show input 
-              ++ " -> Output: " ++ show output
-    ) createXORDataset
-
-  where
-    fst3 (a, _, _) = a
-    snd3 (_, b, _) = b
-    trd3 (_, _, c) = c
-  -}
