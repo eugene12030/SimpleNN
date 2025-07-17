@@ -1,7 +1,7 @@
 module Main where
 
 import Options.Applicative (execParser)
-import qualified CLI as CLI
+import CLI (parseCLI, runCLI)  
 
 main :: IO ()
-main = execParser CLI.parseCLI >>= CLI.runCLI
+main = execParser parseCLI >>= runCLI

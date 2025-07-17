@@ -2,7 +2,6 @@
 
 module DataProcessing where
 
-import           Data.List                  (nub)
 import qualified Data.Vector                as V
 import qualified Data.ByteString.Lazy       as BL
 import qualified Data.ByteString.Lazy.Char8 as BL8
@@ -59,3 +58,4 @@ splitDatasetRandom ratio dataset = do
     shuffled <- shuffleM dataset
     let trainSize = round (ratio * fromIntegral (length shuffled))
     return $ splitAt trainSize shuffled
+

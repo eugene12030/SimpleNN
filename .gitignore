@@ -4,4 +4,6 @@
 
 mnist_train.csv
 
+mnist_predict.csv
+
 cabal
