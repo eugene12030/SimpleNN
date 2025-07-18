@@ -13,7 +13,7 @@ import qualified Data.List                   as List
 import qualified Data.Vector                 as V
 import           System.IO                   (hFlush, stdout)
 import           System.Exit                 (exitSuccess)
-import           Data.IORef                  (IORef, newIORef, readIORef, writeIORef) -- For mutable state
+import           Data.IORef                  (IORef, newIORef, readIORef, writeIORef)
 
 import           Core                        ( Vector
                                              , Activation(..)
@@ -230,9 +230,6 @@ runCLI Shell = do
                       putStrLn "=== Predictions ==="
 
                       mapM_ print preds
-                      -- case cOutputCSV of
-                        -- Just outputPath -> writePredictionsCSV outputPath preds
-                        -- Nothing         -> return () -- Do nothing if no output path specified
                       writePredictionsCSV "prediction_result.csv" preds
                     Nothing -> putStrLn "Error: No network initialized. Use 'init' command first."
                   shellWorker networkRef

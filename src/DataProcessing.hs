@@ -73,7 +73,7 @@ normalizePixels = map normalizeVector
 -- | Split dataset into training and validation sets
 splitDataset :: Double -> [V.Vector Double] -> ([V.Vector Double], [V.Vector Double])
 splitDataset ratio dataset = do
-    let shuffled = dataset -- No shuffling here; use splitDatasetRandom for that
+    let shuffled = dataset
     let trainSize = round (ratio * fromIntegral (length dataset))
     splitAt trainSize shuffled
 
