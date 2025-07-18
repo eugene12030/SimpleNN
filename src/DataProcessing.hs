@@ -77,12 +77,6 @@ splitDataset ratio dataset = do
     let trainSize = round (ratio * fromIntegral (length dataset))
     splitAt trainSize shuffled
 
--- | Split dataset with random shuffling
-splitDatasetRandom :: Double -> [V.Vector Double] -> IO ([V.Vector Double], [V.Vector Double])
-splitDatasetRandom ratio dataset = do
-    shuffled <- shuffleM dataset
-    let trainSize = round (ratio * fromIntegral (length shuffled))
-    return $ splitAt trainSize shuffled
 
 writePredictionsCSV :: FilePath -> [Int] -> IO ()
 writePredictionsCSV filepath predictions = do
